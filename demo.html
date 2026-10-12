@@ -315,19 +315,24 @@
     { id: 's6', text: '整理产品设计文档', done: true, createdAt: Date.now() - 5500, completedAt: Date.now() - 900 }
   ];
 
+  // 安全封装 localStorage：预览/沙箱环境可能禁用，降级为纯内存模式
+  const store = {
+    get() { try { return localStorage.getItem(STORAGE_KEY); } catch (e) { return null; } },
+    set(v) { try { localStorage.setItem(STORAGE_KEY, v); } catch (e) {} }
+  };
+
   let items = load();
 
   function load() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) return JSON.parse(raw);
-    } catch (e) {}
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(SEED));
+    const raw = store.get();
+    if (raw) {
+      try { return JSON.parse(raw); } catch (e) {}
+    }
     return JSON.parse(JSON.stringify(SEED));
   }
 
   function save() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    store.set(JSON.stringify(items));
   }
 
   function render() {
