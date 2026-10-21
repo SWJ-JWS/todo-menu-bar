@@ -1,5 +1,9 @@
 # macOS
 .DS_Store
 
+# SwiftPM 构建产物
+.build/
+build/
+
 # 工作区记忆（个人本地数据，不入库）
 .workbuddy/memory/
