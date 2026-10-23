@@ -28,13 +28,19 @@ struct MenuBarView: View {
         VStack(spacing: 0) {
             inputField
             Divider()
+            // 显式算高：MenuBarExtra .window 自适应尺寸时
+            // ScrollView 固有高度会塌缩为 0（列表整个消失）
             ScrollView {
                 VStack(spacing: 0) {
                     pendingSection
                     completedSection
                 }
             }
-            .frame(maxHeight: 380)
+            .frame(height: MenuBarLayout.listHeight(
+                pendingCount: pending.count,
+                completedCount: completed.count,
+                completedExpanded: completedExpanded
+            ))
         }
         .frame(width: 320)
         .onAppear {
