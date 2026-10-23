@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 import AppKit
 import TodoCore
 
@@ -8,7 +9,8 @@ import TodoCore
 /// Esc 或点击窗外收起；打了半截没回车就失焦时，草稿暂存，下次唤出还在。
 struct MenuBarView: View {
 
-    @EnvironmentObject private var store: TodoStore
+    @Environment(\.modelContext) private var context
+    @Query private var items: [TodoItem]
 
     @State private var draft = ""
     @State private var editingID: UUID?
@@ -17,6 +19,10 @@ struct MenuBarView: View {
     @State private var confirmClearCompleted = false
     @State private var completedExpanded = true
     @FocusState private var inputFocused: Bool
+
+    private var store: TodoStore { TodoStore(context: context) }
+    private var pending: [TodoItem] { TodoStore.sortedPending(items) }
+    private var completed: [TodoItem] { TodoStore.sortedCompleted(items) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -72,8 +78,8 @@ struct MenuBarView: View {
         }
         // 一键清除已完成确认
         .alert("清除全部已完成事项？", isPresented: $confirmClearCompleted) {
-            Button("清除 \(store.completed.count) 条", role: .destructive) {
-                store.clearCompleted()
+            Button("清除 \(completed.count) 条", role: .destructive) {
+                store.clearCompleted(completed)
             }
             Button("取消", role: .cancel) {}
         } message: {
@@ -108,14 +114,14 @@ struct MenuBarView: View {
 
     private var pendingSection: some View {
         Group {
-            if store.pending.isEmpty {
+            if pending.isEmpty {
                 Text("没有待办，回车记下第一件")
                     .font(.callout)
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 20)
             } else {
-                ForEach(store.pending) { item in
+                ForEach(pending) { item in
                     row(for: item)
                 }
             }
@@ -126,17 +132,17 @@ struct MenuBarView: View {
 
     private var completedSection: some View {
         Group {
-            if !store.completed.isEmpty {
+            if !completed.isEmpty {
                 Divider()
                 DisclosureGroup(isExpanded: $completedExpanded) {
-                    ForEach(store.completed) { item in
+                    ForEach(completed) { item in
                         row(for: item)
                     }
                     // 一键清除已完成（P1）
                     Button(role: .destructive) {
                         confirmClearCompleted = true
                     } label: {
-                        Text("清除已完成（\(store.completed.count)）")
+                        Text("清除已完成（\(completed.count)）")
                             .font(.caption)
                             .frame(maxWidth: .infinity, alignment: .center)
                     }
@@ -144,7 +150,7 @@ struct MenuBarView: View {
                     .foregroundStyle(.red.opacity(0.8))
                     .padding(.vertical, 6)
                 } label: {
-                    Text("已完成 · \(store.completed.count)")
+                    Text("已完成 · \(completed.count)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
