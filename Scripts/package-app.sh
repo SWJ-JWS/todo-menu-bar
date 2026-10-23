@@ -6,14 +6,17 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 APP_DIR="build/Todo.app"
+# 工作区在 iCloud 云盘，同步会给文件打上 FinderInfo/provenance 扩展属性，
+# 导致 codesign 报 "resource fork ... not allowed"。构建产物放云盘外规避。
+SCRATCH="$HOME/Library/Caches/TodoAppSPM"
 
 echo "== 构建 Release =="
-swift build --disable-sandbox -c release
+swift build --disable-sandbox -c release --scratch-path "$SCRATCH"
 
 echo "== 组装 Todo.app =="
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS"
-cp .build/release/TodoApp "$APP_DIR/Contents/MacOS/TodoApp"
+cp "$SCRATCH/release/TodoApp" "$APP_DIR/Contents/MacOS/TodoApp"
 
 cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
