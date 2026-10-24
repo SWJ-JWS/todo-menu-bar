@@ -15,10 +15,15 @@ struct MenuBarView: View {
     @State private var draft = ""
     @State private var editingID: UUID?
     @State private var editingText = ""
-    @State private var pendingDeletion: TodoItem?
-    @State private var confirmClearCompleted = false
     @State private var completedExpanded = true
+    @State private var confirmAction: ConfirmAction?
     @FocusState private var inputFocused: Bool
+
+    /// 待确认的操作。确认条内联渲染在浮窗内，不弹窗口。
+    enum ConfirmAction {
+        case delete(TodoItem)
+        case clearCompleted
+    }
 
     private var store: TodoStore { TodoStore(context: context) }
     private var pending: [TodoItem] { TodoStore.sortedPending(items) }
@@ -27,6 +32,10 @@ struct MenuBarView: View {
     var body: some View {
         VStack(spacing: 0) {
             inputField
+            if confirmAction != nil {
+                Divider()
+                confirmBar
+            }
             Divider()
             // 显式算高：MenuBarExtra .window 自适应尺寸时
             // ScrollView 固有高度会塌缩为 0（列表整个消失）
@@ -45,7 +54,6 @@ struct MenuBarView: View {
         .frame(width: 320)
         .onAppear {
             draft = DraftStore.load()
-            NSApp.activate(ignoringOtherApps: true)
             // 唤出即就绪：浮窗出现瞬间焦点落进输入框
             DispatchQueue.main.async { inputFocused = true }
         }
@@ -53,44 +61,69 @@ struct MenuBarView: View {
         .onChange(of: draft) { _, newValue in
             DraftStore.save(newValue)
         }
-        // Esc 收起
+        // Esc：有确认时先取消确认，无确认时收起浮窗
         .onExitCommand {
-            NSApp.keyWindow?.close()
-        }
-        // 失焦即收：App 失去激活（点到窗外/别的 App）时收起浮窗。
-        // 用 didResignActive 而非 didResignKey —— 确认弹窗也是窗口，
-        // 弹窗成为 key 时 App 仍在激活态，不会误收。
-        .onReceive(NotificationCenter.default.publisher(
-            for: NSApplication.didResignActiveNotification
-        )) { _ in
-            for window in NSApp.windows where window.className.contains("MenuBarExtra") {
-                window.close()
+            if confirmAction != nil {
+                confirmAction = nil
+            } else {
+                NSApp.keyWindow?.close()
             }
         }
-        // 删除确认（P0：带确认，防误删）
-        .alert("删除这条事项？", isPresented: Binding(
-            get: { pendingDeletion != nil },
-            set: { if !$0 { pendingDeletion = nil } }
-        )) {
-            Button("删除", role: .destructive) {
-                if let item = pendingDeletion {
-                    store.delete(item)
-                }
-                pendingDeletion = nil
-            }
-            Button("取消", role: .cancel) { pendingDeletion = nil }
-        } message: {
-            Text(pendingDeletion?.text ?? "")
+    }
+
+    // MARK: - 内联确认条（删除 / 清除已完成）
+
+    /// 确认文案与执行动作。
+    private var confirmTitle: String {
+        switch confirmAction {
+        case .delete(let item): return "删除「\(item.text)」？"
+        case .clearCompleted:   return "清除 \(completed.count) 条已完成？"
+        case .none:             return ""
         }
-        // 一键清除已完成确认
-        .alert("清除全部已完成事项？", isPresented: $confirmClearCompleted) {
-            Button("清除 \(completed.count) 条", role: .destructive) {
-                store.clearCompleted(completed)
-            }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("此操作不可撤销。")
+    }
+
+    private var confirmButtonTitle: String {
+        switch confirmAction {
+        case .delete:          return "删除"
+        case .clearCompleted:  return "清除"
+        case .none:            return ""
         }
+    }
+
+    private var confirmBar: some View {
+        HStack(spacing: 10) {
+            Text(confirmTitle)
+                .font(.callout)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            Spacer()
+            Button(confirmButtonTitle) {
+                executeConfirm()
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 3)
+            .background(Color.red)
+            .clipShape(RoundedRectangle(cornerRadius: 5))
+            .buttonStyle(.plain)
+            Button("取消") {
+                confirmAction = nil
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.accentColor.opacity(0.08))
+    }
+
+    private func executeConfirm() {
+        switch confirmAction {
+        case .delete(let item):  store.delete(item)
+        case .clearCompleted:    store.clearCompleted(completed)
+        case .none:              break
+        }
+        confirmAction = nil
     }
 
     // MARK: - 输入框（常驻顶部，记录是最高频动作）
@@ -146,7 +179,7 @@ struct MenuBarView: View {
                     }
                     // 一键清除已完成（P1）
                     Button(role: .destructive) {
-                        confirmClearCompleted = true
+                        confirmClear()
                     } label: {
                         Text("清除已完成（\(completed.count)）")
                             .font(.caption)
@@ -180,8 +213,21 @@ struct MenuBarView: View {
                 store.updateText(item, text: editingText)
                 editingID = nil
             },
-            onDelete: { pendingDeletion = item }
+            onDelete: { confirmDelete(item) }
         )
+    }
+
+    // MARK: - 内联确认（不弹窗口，避免关闭浮窗）
+
+    /// 删除确认：内联确认条。MenuBarExtra 浮窗是 nonactivating 面板，
+    /// SwiftUI .alert 的 sheet 按钮对鼠标点击不响应、NSAlert.runModal 又会
+    /// 关闭浮窗（均已实测），故改为在浮窗内渲染确认条，最可靠。
+    private func confirmDelete(_ item: TodoItem) {
+        confirmAction = .delete(item)
+    }
+
+    private func confirmClear() {
+        confirmAction = .clearCompleted
     }
 }
 
