@@ -5,5 +5,8 @@
 .build/
 build/
 
+# Xcode / SwiftPM 本地工作区
+.swiftpm/
+
 # 工作区记忆（个人本地数据，不入库）
 .workbuddy/memory/
